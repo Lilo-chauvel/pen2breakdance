@@ -129,10 +129,13 @@ function mediaFromUrl(url) {
   return { id: null, filename, url: full, alt: "", caption: "", mime, type: "image", sizes: {}, attributes: {} };
 }
 
-function applyBackground(props, n, css) {
+function applyBackground(props, n, css, isSection = false) {
   for (const f of fillsOf(n)) {
     if (typeof f === "string" || f.type === "color") {
       deepSet(props, "design.background.color", color(typeof f === "string" ? f : f.color));
+    } else if (f.type === "image" && f.url && isSection) {
+      const m = mediaFromUrl(f.url);
+      css.push(`background-image: url("${m.url}");`, `background-size: ${f.mode === "contain" ? "contain" : f.mode === "stretch" ? "100% 100%" : "cover"};`, "background-position: center;");
     } else if (f.type === "image" && f.url) {
       deepSet(props, "design.background.type", "image");
       deepSet(props, "design.background.image", bp(mediaFromUrl(f.url)));
@@ -160,6 +163,14 @@ function bordersObj(n) {
     out.radius = bp({ all: num(r[0]), topLeft: num(r[0]), topRight: num(r[1]), bottomRight: num(r[2]), bottomLeft: num(r[3]), editMode: all ? "all" : "custom" });
   }
   return Object.keys(out).length ? out : null;
+}
+
+function borderCss(n, css) {
+  if (n.stroke === undefined) return;
+  const sc = color(typeof n.stroke === "string" ? n.stroke : n.stroke.color ?? n.stroke[0]);
+  const sw = n.strokeWidth ?? 1;
+  const per = typeof sw === "object" ? sw : { top: sw, right: sw, bottom: sw, left: sw };
+  for (const side of ["top", "right", "bottom", "left"]) if (per[side]) css.push(`border-${side}: ${numCss(per[side])} solid ${sc};`);
 }
 
 function effectsCss(n, css) {
@@ -300,8 +311,7 @@ async function convert(n, parent, parentId, isRoot = false) {
     const e = el("Button", props, parentId, n.name);
     deepSet(props, "content.content", { text: label.content ?? "", link: { type: "url", url: "#" } });
     deepSet(props, "design.button.style", hasFill ? "primary" : "secondary");
-    const icon = n.children.find(c => c.type === "icon");
-    if (icon && /arrow|chevron/.test(icon.icon || "")) deepSet(props, "design.button.text.arrow.arrow", true);
+    if (n.children.some(c => c.type === "icon")) warnings.push(`Bouton « ${label.content} » : l'icône n'est pas reprise, à régler dans Breakdance`);
     finishCss(props, css);
     e.data.properties = props;
     return e;
@@ -310,14 +320,33 @@ async function convert(n, parent, parentId, isRoot = false) {
   const leaf = !(n.children || []).length && ["frame", "rectangle"].includes(n.type);
   const solid = fillsOf(n).length === 1 && (typeof fillsOf(n)[0] === "string" || fillsOf(n)[0].type === "color");
 
-  // Trait (rectangle fin et plein) → Divider
+  // Trait (rectangle fin et plein) → Divider solid
+  // Seul le style est connu (export Breakdance réel) : couleur et épaisseur restent à régler dans Breakdance.
   if (!isRoot && leaf && solid && typeof n.height === "number" && n.height <= 4
       && (n.width === "fill_container" || (typeof n.width === "number" && n.width >= n.height * 6))) {
     const f = fillsOf(n)[0];
-    const e = el("Divider", props, parentId, n.name);
-    const w = n.width === "fill_container" ? { number: 100, unit: "%", style: "100%" } : num(n.width);
-    deepSet(props, "design.divider", { style: "solid", color: color(typeof f === "string" ? f : f.color), width: bp(w), height: bp(num(n.height)) });
-    if (n.width === "fill_container" && parent && layoutOf(parent) === "horizontal") css.push("flex: 1 1 0;");
+    const e = el("FancyDivider", props, parentId, n.name);
+    deepSet(props, "settings.advanced.tag", "div");
+    deepSet(props, "content.divider", { content: null });
+    deepSet(props, "design.divider", { style: "solid" });
+    if (n.width === "fill_container") css.push(parent && layoutOf(parent) === "horizontal" ? "flex: 1 1 0;" : "width: 100%;");
+    else css.push(`width: ${numCss(n.width)};`, "flex-shrink: 0;");
+    warnings.push(`Divider « ${n.name} » : couleur ${color(typeof f === "string" ? f : f.color)} et épaisseur ${n.height}px à régler dans Breakdance`);
+    finishCss(props, css);
+    e.data.properties = props;
+    return e;
+  }
+
+  // Point (petite ellipse pleine) → Icon cercle (Font Awesome, comme dans Breakdance)
+  if (!isRoot && n.type === "ellipse" && solid && n.stroke === undefined && typeof n.width === "number" && n.width <= 24) {
+    const f = fillsOf(n)[0];
+    const e = el("Icon", props, parentId, n.name);
+    deepSet(props, "content.content.icon", {
+      id: 490, slug: "icon-circle.", name: "circle", iconSetSlug: "FontAwesome 6 Free - Solid",
+      svgCode: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512z"/></svg>',
+    });
+    deepSet(props, "design.icon.size", bp(px(n.width)));
+    deepSet(props, "design.icon.color", color(typeof f === "string" ? f : f.color));
     finishCss(props, css);
     e.data.properties = props;
     return e;
@@ -333,7 +362,8 @@ async function convert(n, parent, parentId, isRoot = false) {
     if (n.height === "fill_container") deepSet(props, "design.image.height", bp({ number: 100, unit: "%", style: "100%" }));
     deepSet(props, "design.image.object_fit", bp(imgFill.mode === "contain" ? "contain" : imgFill.mode === "stretch" ? "fill" : "cover"));
     const b = bordersObj(n);
-    if (b) deepSet(props, "design.borders", b);
+    if (b?.radius) deepSet(props, "design.borders", { radius: b.radius });
+    if (b?.border) borderCss(n, css);
     finishCss(props, css);
     e.data.properties = props;
     return e;
@@ -385,13 +415,14 @@ async function convert(n, parent, parentId, isRoot = false) {
   if (isSection) {
     // Section : contenu pleine largeur du conteneur, padding vertical géré au-dessus
     deepSet(props, "design.container.width", bp(px(Math.max(320, PAGE_WIDTH - (pad ? (pad.left || 0) + (pad.right || 0) : 0)))));
-    if (typeof n.height === "number") deepSet(props, "design.container.min_height", bp(px(n.height)));
+    if (typeof n.height === "number") css.push(`min-height: ${n.height}px;`);
   }
 
-  applyBackground(props, n, css);
+  applyBackground(props, n, css, isSection);
   if (n.type === "ellipse") css.push("border-radius: 50%;");
   const b = bordersObj(n);
-  if (b) deepSet(props, isSection ? "design.borders" : "design.container.borders", b);
+  if (b && !isSection) deepSet(props, "design.container.borders", b);
+  if (b && isSection) { borderCss(n, css); if (b.radius) css.push(`border-radius: ${numCss(Array.isArray(n.cornerRadius) ? n.cornerRadius[0] : n.cornerRadius)};`); }
   if (n.clip) css.push("overflow: hidden;");
 
   if (!isSection) for (const [k, v] of Object.entries(sizing(n, parent, css, "div"))) deepSet(props, k, v);
@@ -455,7 +486,8 @@ for (const page of dump.pages) {
     all.push(section);
     fs.writeFileSync(path.join(pageDir, `${pad2(i + 1)}-${slug(node.name)}.json`), wrap(section));
   }
-  if (all.length > 1) fs.writeFileSync(path.join(pageDir, "00-page-complete.json"), wrap(all));
+  // Breakdance insère chaque élément d'une liste juste après la sélection : on inverse pour garder l'ordre
+  if (all.length > 1) fs.writeFileSync(path.join(pageDir, "00-page-complete.json"), wrap([...all].reverse()));
   report.push(`  ${ps}/  (${all.length} section${all.length > 1 ? "s" : ""})`);
 }
 
@@ -484,4 +516,10 @@ console.log(`  medias.txt  (${media.size} image${media.size > 1 ? "s" : ""})`);
 if (firstRun) console.log(`\n  ℹ Config créée : ${rel(CONFIG_FILE)} (préfixe des variables : --${PREFIX}-…)`);
 if (media.size && !MEDIA_URL) console.log(`  ⚠ mediaUrl non renseignée dans pen2bd.config.json : les images ne s'afficheront pas après collage.`);
 if (dupes.length) console.log(`  ⚠ ${dupes.length} nom(s) d'image en double, voir medias.txt`);
-for (const w of [...new Set(warnings)]) console.log(`  ⚠ ${w}`);
+const uniq = [...new Set(warnings)];
+if (uniq.length) {
+  fs.writeFileSync(path.join(OUT, "a-verifier.txt"),
+    "# Points à régler à la main dans Breakdance après collage\n" +
+    "# (le script ne met que des réglages Breakdance connus ; le reste est listé ici)\n\n" + uniq.join("\n") + "\n");
+  console.log(`  a-verifier.txt  (${uniq.length} point${uniq.length > 1 ? "s" : ""} à régler à la main)`);
+}

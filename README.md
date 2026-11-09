@@ -43,6 +43,7 @@ Le script crée un dossier `export/` :
 export/
 ├── variables.css          ← variables globales (:root) : couleurs, polices
 ├── medias.txt             ← images utilisées et nom attendu dans WordPress
+├── a-verifier.txt         ← réglages à faire à la main après collage
 └── accueil/               ← un dossier par page de la maquette
     ├── 00-page-complete.json
     ├── 01-header.json
@@ -54,6 +55,8 @@ Pour importer dans Breakdance :
 
 1. **Une fois par site**, colle le contenu de `variables.css` dans **Breakdance → Global Settings → Code → Custom CSS**.
 2. Ouvre un fichier `.json`, copie tout son contenu (Ctrl+A, Ctrl+C) et colle-le dans l'éditeur Breakdance (Ctrl+V).
+   `00-page-complete.json` contient toutes les sections de la page, dans l'ordre.
+3. Consulte `a-verifier.txt` pour les quelques réglages à faire à la main.
 
 > ⚠ `export/` est entièrement régénéré à chaque lancement. N'y range pas d'autres fichiers.
 
@@ -91,20 +94,32 @@ Options en ligne de commande :
 | `--out <dossier>` | Dossier de sortie (par défaut `./export`). |
 | `--help` | Affiche l'aide. |
 
+## Principe : rien n'est inventé
+
+Le script n'écrit que des réglages Breakdance **vérifiés**, c'est-à-dire relevés dans de vrais exports Breakdance. Quand il ne sait pas convertir quelque chose proprement, il ne devine pas :
+
+- **Un élément qu'il ne sait pas convertir devient une Div.** Si tu trouves une Div là où tu attendais un autre élément (formulaire, accordéon, slider, menu…), c'est que la conversion n'a pas été possible. Remplace-la par l'élément Breakdance adapté.
+- **Un réglage visuel sans équivalent Breakdance connu** (dégradé, ombre, position absolue, bordure d'une image…) passe dans le **CSS personnalisé** de l'élément (onglet Advanced → Custom CSS, sélecteur `%%SELECTOR%%`).
+- **Un réglage impossible à transmettre** (couleur d'un Divider, icône dans un bouton…) est listé dans **`a-verifier.txt`**, à régler à la main.
+
+Le résultat est donc une base fidèle, que le webdesigner finalise dans Breakdance.
+
 ## Correspondances pen.dev → Breakdance
 
 | pen.dev | Breakdance |
 |---|---|
-| Cadre racine vertical (page) | une page, chaque enfant direct = une **Section** |
+| Cadre racine vertical (page) | une page, chaque enfant direct = une **Section** (padding, largeur, fond) |
 | Cadre avec mise en page verticale ou horizontale | **Div** avec la mise en page native (alignements, gap, padding) |
-| Rangée de colonnes | Div horizontale qui passe en vertical sur tablette |
+| Rangée de colonnes | Div horizontale qui passe en vertical sur tablette (portrait) |
 | Texte | **Heading** (h1–h6 si le calque s'appelle `H1`, `H2`…, sinon selon la taille) ou **Text** |
-| Cadre avec fond ou bordure contenant un texte (+ icône) | **Button** (style primaire ou secondaire global) |
+| Cadre avec fond ou bordure contenant un texte | **Button** (style primaire si fond plein, secondaire sinon). Une icône dans le bouton n'est pas reprise. |
 | Cadre ou rectangle sans enfant, rempli d'une image | **Image** |
 | Cadre rempli d'une image avec du contenu par-dessus | Div avec **image de fond** |
-| Rectangle plein de 4 px de haut au maximum | **Divider** (solid) |
+| Rectangle plein de 4 px de haut au maximum | **Divider** (style solid ; couleur et épaisseur à régler, voir `a-verifier.txt`) |
+| Petite ellipse pleine (24 px max) | **Icon** cercle (Font Awesome) à la bonne taille et couleur |
 | Icône Lucide, Feather ou Phosphor | **Icon** (SVG intégré) |
 | Variables pen.dev (`$light`) | `var(--prefix-light)` |
+| Tout autre élément (ou combinaison non reconnue) | **Div** : à remplacer à la main |
 | Couleurs, bordures, coins arrondis | réglages natifs |
 | Dégradés, ombres, flou, positions absolues | CSS personnalisé de l'élément (`%%SELECTOR%%`) |
 
@@ -128,7 +143,7 @@ PEN_MCP_BIN="/chemin/vers/resources/app.asar.unpacked/out/mcp-server-xxx" pen2bd
 - Les **liens des boutons** sont exportés vers `#`.
 - Les éléments complexes (formulaires, FAQ, sliders, menus) sont exportés en Div à remplacer par l'élément Breakdance adapté.
 - Les images sont collées par URL, sans identifiant de médiathèque : pas de `srcset` automatique.
-- Certaines propriétés Breakdance ont été déduites sans exemple réel (padding des Sections, Divider, passage en vertical sur tablette). Les retours sont bienvenus.
+- Le script ne connaît que les réglages relevés dans de vrais exports. Pour enrichir la conversion d'un élément, copie-le depuis Breakdance après l'avoir réglé et ouvre une *issue* avec le JSON obtenu.
 
 ## Licence
 
