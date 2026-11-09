@@ -511,8 +511,8 @@ for (const page of dump.pages) {
     all.push(section);
     fs.writeFileSync(path.join(pageDir, `${pad2(i + 1)}-${slug(node.name)}.json`), wrap(section));
   }
-  // Breakdance insère chaque élément d'une liste juste après la sélection : on inverse pour garder l'ordre
-  if (all.length > 1) fs.writeFileSync(path.join(pageDir, "00-page-complete.json"), wrap([...all].reverse()));
+  // Ordre naturel : Breakdance colle les sections dans l'ordre du fichier (constaté sur une page sans sélection)
+  if (all.length > 1) fs.writeFileSync(path.join(pageDir, "00-page-complete.json"), wrap(all));
   report.push(`  ${ps}/  (${all.length} section${all.length > 1 ? "s" : ""})`);
 }
 

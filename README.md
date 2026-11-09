@@ -57,6 +57,7 @@ Pour importer dans Breakdance :
    ⚠ D'après la documentation Breakdance, l'import **remplace** les réglages globaux existants, sans fusion. Fais-le sur un site neuf, ou exporte d'abord tes réglages actuels.
 2. Ouvre un fichier `.json`, copie tout son contenu (Ctrl+A, Ctrl+C) et colle-le dans l'éditeur Breakdance (Ctrl+V).
    `00-page-complete.json` contient toutes les sections de la page, dans l'ordre.
+   Colle-le **sans aucun élément sélectionné** (clique dans le vide de la page avant Ctrl+V). Si une section est sélectionnée, Breakdance risque d'insérer les sections dans un autre ordre.
 3. Consulte `a-verifier.txt` pour les quelques réglages à faire à la main.
 
 > ⚠ `export/` est entièrement régénéré à chaque lancement. N'y range pas d'autres fichiers.
