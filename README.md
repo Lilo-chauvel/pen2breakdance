@@ -41,7 +41,7 @@ Le script crée un dossier `export/` :
 
 ```
 export/
-├── variables.css          ← variables globales (:root) : couleurs, polices
+├── global-settings.json   ← réglages globaux Breakdance : palette, polices, bouton primaire
 ├── medias.txt             ← images utilisées et nom attendu dans WordPress
 ├── a-verifier.txt         ← réglages à faire à la main après collage
 └── accueil/               ← un dossier par page de la maquette
@@ -53,7 +53,8 @@ export/
 
 Pour importer dans Breakdance :
 
-1. **Une fois par site**, colle le contenu de `variables.css` dans **Breakdance → Global Settings → Code → Custom CSS**.
+1. **Une fois par site**, importe `global-settings.json` : dans l'éditeur Breakdance, menu → **Global Settings** → menu ⋯ → **Import Global Settings**, puis **Save**.
+   ⚠ D'après la documentation Breakdance, l'import **remplace** les réglages globaux existants, sans fusion. Fais-le sur un site neuf, ou exporte d'abord tes réglages actuels.
 2. Ouvre un fichier `.json`, copie tout son contenu (Ctrl+A, Ctrl+C) et colle-le dans l'éditeur Breakdance (Ctrl+V).
    `00-page-complete.json` contient toutes les sections de la page, dans l'ordre.
 3. Consulte `a-verifier.txt` pour les quelques réglages à faire à la main.
@@ -82,7 +83,7 @@ Au premier lancement, `pen2bd.config.json` est créé à côté du `.pen` :
 
 | Clé | Rôle |
 |---|---|
-| `prefix` | Préfixe des variables CSS : la variable pen.dev `light` devient `--bbe-light`. Par défaut, le début du nom du fichier `.pen`. |
+| `prefix` | Sert à générer des identifiants de couleurs stables pour ce projet (par défaut, le début du nom du fichier `.pen`). Ne le change pas une fois le site importé. |
 | `mediaUrl` | URL du dossier WordPress qui contient les images. |
 | `mediaFormat` | Extension des images après conversion (`webp`, `avif`…). Mets `""` pour garder l'extension d'origine. |
 
@@ -118,7 +119,11 @@ Le résultat est donc une base fidèle, que le webdesigner finalise dans Breakda
 | Rectangle plein de 4 px de haut au maximum | **Divider** (style solid ; couleur et épaisseur à régler, voir `a-verifier.txt`) |
 | Petite ellipse pleine (24 px max) | **Icon** cercle (Font Awesome) à la bonne taille et couleur |
 | Icône Lucide, Feather ou Phosphor | **Icon** (SVG intégré) |
-| Variables pen.dev (`$light`) | `var(--prefix-light)` |
+| Variables couleur pen.dev (`$light`) | couleurs de la **palette** Breakdance (`global-settings.json`), utilisées par les éléments |
+| Variables numériques ou police | valeur reportée directement dans les éléments |
+| Police la plus utilisée dans les titres / dans le texte | police globale des titres / du texte |
+| Autre police sur un élément | réglage de police natif de l'élément |
+| Fond et texte du bouton plein le plus fréquent | style global du bouton primaire |
 | Tout autre élément (ou combinaison non reconnue) | **Div** : à remplacer à la main |
 | Couleurs, bordures, coins arrondis | réglages natifs |
 | Dégradés, ombres, flou, positions absolues | CSS personnalisé de l'élément (`%%SELECTOR%%`) |

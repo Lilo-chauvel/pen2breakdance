@@ -11,6 +11,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { readDocument } from "./pen-mcp.mjs";
 
 const args = process.argv.slice(2);
@@ -59,6 +60,7 @@ try { dump = await readDocument(penFile); }
 catch (e) { fail(e.message); }
 const VARS = dump.variables || {};
 let PAGE_WIDTH = 1440;
+let FONTS = { heading: null, body: null };
 
 let nextId = 1000;
 
@@ -66,11 +68,21 @@ let nextId = 1000;
 const bp = v => ({ breakpoint_base: v });
 const px = n => ({ number: n, unit: "px", style: `${n}px` });
 const custom = s => ({ number: s, unit: "custom", style: String(s) });
-const varName = v => `--${PREFIX}-${v.slice(1)}`;
 const isVar = v => typeof v === "string" && v.startsWith("$");
-// valeur numérique pen (nombre ou $variable) -> unité Breakdance
-const num = v => isVar(v) ? custom(`var(${varName(v)})`) : px(v);
-const numCss = v => isVar(v) ? `var(${varName(v)})` : `${v}px`;
+// valeur d'une variable pen (première valeur si thèmes), résolue récursivement
+const varValue = v => { const d = VARS[v.slice(1)]; if (!d) return undefined; const val = Array.isArray(d.value) ? d.value[0]?.value : d.value; return isVar(val) ? varValue(val) : val; };
+const resolve = v => isVar(v) ? varValue(v) : v;
+// Variables couleur → palette Breakdance (Global Settings > Colors > Palette)
+// Nom au format Breakdance « bde-palette-<nom>-<uuid> », uuid stable dérivé du nom pour que les réexports restent liés.
+const stableUuid = seed => { const h = createHash("md5").update(seed).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`; };
+const slugify = s => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+const paletteName = k => `bde-palette-${slugify(k)}-${stableUuid(`${PREFIX}:${k}`)}`;
+const isColorVar = v => isVar(v) && VARS[v.slice(1)]?.type === "color";
+// valeur numérique pen (nombre ou $variable) -> unité Breakdance (les variables numériques sont résolues)
+const num = v => px(resolve(v));
+const numCss = v => `${resolve(v)}px`;
+// police Google → identifiant Breakdance (ex. « Brygada 1918 » → gfont-brygada1918)
+const gfont = family => family ? "gfont-" + String(family).toLowerCase().replace(/[^a-z0-9]/g, "") : null;
 
 function hexToCss(hex) {
   if (!hex || !hex.startsWith("#")) return hex;
@@ -82,7 +94,7 @@ function hexToCss(hex) {
   }
   return hex;
 }
-const color = v => isVar(v) ? `var(${varName(v)})` : hexToCss(v);
+const color = v => isColorVar(v) ? `var(--${paletteName(v.slice(1))})` : hexToCss(resolve(v));
 
 function deepSet(obj, pathStr, value) {
   if (value === undefined || value === null) return;
@@ -218,7 +230,9 @@ function typography(props, t, css) {
   if (t.fontStyle === "italic") css.push("font-style: italic;");
   if (t.underline) css.push("text-decoration: underline;");
   if (t.textAlign) css.push(`text-align: ${t.textAlign};`);
-  if (t.fontFamily) css.push(`font-family: ${isVar(t.fontFamily) ? `var(${varName(t.fontFamily)})` : `"${t.fontFamily}", sans-serif`};`);
+  // police : rien si c'est la police globale (titres ou texte), sinon réglage natif de l'élément
+  const fam = resolve(t.fontFamily);
+  if (fam && fam !== (headingTag(t) ? FONTS.heading : FONTS.body)) deepSet(props, `${base}.fontFamily`, bp(gfont(fam)));
   const fill = fillsOf(t)[0];
   if (fill) deepSet(props, "design.typography.color", bp(color(typeof fill === "string" ? fill : fill.color)));
 }
@@ -311,6 +325,7 @@ async function convert(n, parent, parentId, isRoot = false) {
     const e = el("Button", props, parentId, n.name);
     deepSet(props, "content.content", { text: label.content ?? "", link: { type: "url", url: "#" } });
     deepSet(props, "design.button.style", hasFill ? "primary" : "secondary");
+    if (hasFill) { const f = fillsOf(n)[0]; primaryButtons.push({ bg: typeof f === "string" ? f : f.color, color: textFill(label) }); }
     if (n.children.some(c => c.type === "icon")) warnings.push(`Bouton « ${label.content} » : l'icône n'est pas reprise, à régler dans Breakdance`);
     finishCss(props, css);
     e.data.properties = props;
@@ -444,19 +459,30 @@ async function convert(n, parent, parentId, isRoot = false) {
   return e;
 }
 
-// ---------- CSS global (variables) ----------
-function globalCss() {
-  const lines = [];
-  for (const [k, v] of Object.entries(VARS)) {
-    const val = Array.isArray(v.value) ? v.value[0].value : v.value;
-    let out = val;
-    if (v.type === "color") out = hexToCss(val);
-    else if (v.type === "number") out = `${val}px`;
-    else if (v.type === "string") out = `"${val}", sans-serif`;
-    else continue;
-    lines.push(`  --${PREFIX}-${k}: ${out};`);
-  }
-  return `/* Variables de la maquette pen.dev\n   À coller une fois par site : Breakdance > Global Settings > Code > Custom CSS */\n:root {\n${lines.join("\n")}\n}\n`;
+// ---------- Global Settings Breakdance ----------
+const mostCommon = arr => { const c = {}; for (const x of arr) if (x) c[x] = (c[x] || 0) + 1; return Object.entries(c).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null; };
+const allTexts = dump.pages.flatMap(p => p.sections.flatMap(textNodes));
+FONTS = {
+  heading: mostCommon(allTexts.filter(t => headingTag(t)).map(t => resolve(t.fontFamily))),
+  body: mostCommon(allTexts.filter(t => !headingTag(t)).map(t => resolve(t.fontFamily))),
+};
+const textFill = t => { const f = fillsOf(t)[0]; return f && (typeof f === "string" ? f : f.color); };
+const primaryButtons = []; // [{ bg, color }] relevés pendant la conversion
+
+function globalSettings() {
+  const colors = Object.entries(VARS).filter(([, v]) => v.type === "color")
+    .map(([k]) => ({ cssVariableName: paletteName(k), label: k, value: varValue("$" + k) ?? null }));
+  const settings = {
+    typography: { heading_font: gfont(FONTS.heading), body_font: gfont(FONTS.body) },
+    colors: { palette: { colors } },
+  };
+  const bodyColor = mostCommon(allTexts.filter(t => !headingTag(t)).map(textFill));
+  if (bodyColor) settings.colors.text = color(bodyColor);
+  const pageBg = dump.pages.map(p => p.fill).find(f => typeof f === "string");
+  if (pageBg) settings.colors.background = color(pageBg);
+  const bg = mostCommon(primaryButtons.map(b => b.bg)), fg = mostCommon(primaryButtons.map(b => b.color));
+  if (bg) settings.buttons = { primary: { background: color(bg), ...(fg ? { typography: { color: bp(color(fg)) } } : {}) } };
+  return { settings };
 }
 
 // ---------- main ----------
@@ -466,7 +492,6 @@ const wrap = element => JSON.stringify({ source: SOURCE, element, colors: [], pr
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
-fs.writeFileSync(path.join(OUT, "variables.css"), globalCss());
 
 const report = [];
 const usedPageSlugs = new Set();
@@ -510,12 +535,13 @@ fs.writeFileSync(path.join(OUT, "medias.txt"), mediaLines.join("\n") + "\n");
 // ---------- résumé ----------
 const rel = p => path.relative(process.cwd(), p) || ".";
 console.log(`✔ Export de ${path.basename(penFile)} → ${rel(OUT)}/`);
-console.log(`  variables.css  (à coller une fois dans Global Settings > Code > Custom CSS)`);
+console.log(`  global-settings.json  (Breakdance > Global Settings > Import Global Settings, une fois par site)`);
 console.log(report.join("\n"));
 console.log(`  medias.txt  (${media.size} image${media.size > 1 ? "s" : ""})`);
-if (firstRun) console.log(`\n  ℹ Config créée : ${rel(CONFIG_FILE)} (préfixe des variables : --${PREFIX}-…)`);
+if (firstRun) console.log(`\n  ℹ Config créée : ${rel(CONFIG_FILE)}`);
 if (media.size && !MEDIA_URL) console.log(`  ⚠ mediaUrl non renseignée dans pen2bd.config.json : les images ne s'afficheront pas après collage.`);
 if (dupes.length) console.log(`  ⚠ ${dupes.length} nom(s) d'image en double, voir medias.txt`);
+fs.writeFileSync(path.join(OUT, "global-settings.json"), JSON.stringify(globalSettings()));
 const uniq = [...new Set(warnings)];
 if (uniq.length) {
   fs.writeFileSync(path.join(OUT, "a-verifier.txt"),

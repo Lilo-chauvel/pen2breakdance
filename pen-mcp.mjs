@@ -83,7 +83,7 @@ const pages=[];
 for(const r of Get(document,(n,c)=>{c.skipChildren();return n.type==="frame"&&!n.reusable?{id:n.id,w:c.bounds.width}:undefined})){
   const n=Get(r.id);
   const multi=n.layout==="vertical"&&(n.children||[]).length>1;
-  pages.push({name:n.name,width:r.w,sections:multi?n.children:[n]});
+  pages.push({name:n.name,width:r.w,fill:n.fill,sections:multi?n.children:[n]});
 }
 Print("@@DUMP@@"+JSON.stringify({variables:GetVariables().variables||{},pages}));`;
 
