@@ -61,6 +61,10 @@ catch (e) { fail(e.message); }
 const VARS = dump.variables || {};
 let PAGE_WIDTH = 1440;
 let FONTS = { heading: null, body: null };
+// Liens du header / footer
+let ZONE = null;              // "header" | "footer" | null pendant la conversion d'une section
+let LINK_TARGETS = [];        // [{ name, slug, url }] : sections de la page (ancres) et autres pages
+const anchorsNeeded = new Map(); // slug → nom de la section à qui donner cet ID
 
 let nextId = 1000;
 
@@ -286,7 +290,7 @@ async function iconSvg(lib, name) {
 // ---------- détection ----------
 const textNodes = n => n.type === "text" ? [n] : (n.children || []).flatMap(textNodes);
 const isButton = n => n.type === "frame" && n.children?.length && n.children.length <= 2 && (n.layout ?? "horizontal") === "horizontal"
-  && n.children.some(c => c.type === "text") && n.children.every(c => c.type === "text" || c.type === "icon")
+  && n.children.filter(c => c.type === "text").length === 1 && n.children.every(c => c.type === "text" || c.type === "icon")
   && (fillsOf(n).length || n.stroke !== undefined) && (n.padding !== undefined);
 const headingTag = t => {
   const m = /^h([1-6])\b/i.exec(t.name || "");
@@ -313,8 +317,82 @@ function absCss(n, css) {
   if (n.layoutPosition === "absolute" || n._absParent) css.push("position: absolute;", `left: ${n.x ?? 0}px;`, `top: ${n.y ?? 0}px;`);
 }
 
+// ---------- liens (header / footer) ----------
+const SOCIAL = /^(linkedin|facebook|instagram|youtube|tiktok|twitter|x|pinterest|whatsapp)$/i;
+const LEGAL = /mentions l[ée]gales|confidentialit|cgv|conditions g[ée]n[ée]rales|plan du site|cookies/i;
+
+// Lien déduit d'un texte : href pen.dev, téléphone, e-mail, ou nom d'une section / page. Sinon null.
+function linkFor(t) {
+  if (t.href) return t.href;
+  const txt = String(t.content ?? "").trim();
+  if (/^[\w.+-]+@[\w-]+\.[\w.]+$/.test(txt)) return `mailto:${txt}`;
+  const digits = txt.replace(/[\s.\-()]/g, "");
+  if (/^\+?\d{9,15}$/.test(digits)) return `tel:${digits}`;
+  const sl = slugify(txt.replace(/\*/g, ""));
+  if (!sl) return null;
+  const target = LINK_TARGETS.find(x => x.slug === sl) || LINK_TARGETS.find(x => x.slug.startsWith(sl + "-"));
+  if (!target) return null;
+  if (target.url.startsWith("#")) anchorsNeeded.set(target.slug, target.name);
+  else warnings.push(`Lien « ${txt} » → ${target.url} : vérifier l'URL de la page dans WordPress`);
+  return target.url;
+}
+
+function wrapLink(child, url, parentId, name) {
+  const w = el("WrapperLink", { content: { content: { link: { type: "url", url } } } }, parentId, name);
+  child._parentId = w.id;
+  w.children.push(child);
+  return w;
+}
+
+// Menu = cadre horizontal du header contenant au moins 2 textes, et seulement des textes ou des boutons
+const isMenu = n => ZONE === "header" && n.type === "frame" && (n.layout ?? "horizontal") === "horizontal"
+  && (n.children || []).filter(c => c.type === "text").length >= 2
+  && (n.children || []).every(c => c.type === "text" || isButton(c));
+
 async function convert(n, parent, parentId, isRoot = false) {
   if (n.enabled === false) return null;
+
+  if (ZONE && !isRoot) {
+    // Menu du header → MenuBuilder natif (MenuLink / MenuButton)
+    if (isMenu(n)) {
+      const m = el("MenuBuilder", {}, parentId, n.name);
+      for (const c of n.children) {
+        const label = c.type === "text" ? c : textNodes(c)[0];
+        let url = linkFor(label);
+        if (!url) { url = "#"; warnings.push(`Menu « ${label.content} » : lien à définir`); }
+        const item = c.type === "text"
+          ? el("MenuLink", { content: { content: { link: { type: "url", url }, text: label.content ?? "" } } }, m.id, c.name)
+          : el("MenuButton", { content: { content: { text: label.content ?? "", link: { type: "url", url } } } }, m.id, c.name);
+        m.children.push(item);
+      }
+      warnings.push(`Menu « ${n.name} » : typographie, couleurs et espacements du menu à régler dans Breakdance`);
+      return m;
+    }
+    // Logo → lien vers l'accueil
+    if (/logo/i.test(n.name || "") && !n._linked) {
+      n._linked = true;
+      const inner = await convert(n, parent, parentId);
+      return inner && wrapLink(inner, "/", parentId, n.name);
+    }
+    // Réseaux sociaux → lien à renseigner
+    if (n.type === "frame" && SOCIAL.test(n.name || "") && !n._linked) {
+      n._linked = true;
+      const inner = await convert(n, parent, parentId);
+      warnings.push(`Lien ${n.name} : URL du profil à renseigner`);
+      return inner && wrapLink(inner, "#", parentId, n.name);
+    }
+    // Texte → lien si on sait où il mène
+    if (n.type === "text" && !n._linked && !/^(titre|title|heading)\b/i.test(n.name || "")) {
+      if (LEGAL.test(n.content || "")) warnings.push(`« ${n.content} » : liens vers les pages légales à créer`);
+      const url = linkFor(n);
+      if (url) {
+        n._linked = true;
+        const inner = await convert(n, parent, parentId);
+        return wrapLink(inner, url, parentId, n.name);
+      }
+    }
+  }
+
   const css = [];
   const props = {};
   absCss(n, css);
@@ -354,7 +432,7 @@ async function convert(n, parent, parentId, isRoot = false) {
     const label = textNodes(n)[0];
     const hasFill = fillsOf(n).length > 0;
     const e = el("Button", props, parentId, n.name);
-    deepSet(props, "content.content", { text: label.content ?? "", link: { type: "url", url: "#" } });
+    deepSet(props, "content.content", { text: label.content ?? "", link: { type: "url", url: linkFor(label) || "#" } });
     deepSet(props, "design.button.style", hasFill ? "primary" : "secondary");
     if (hasFill) { const f = fillsOf(n)[0]; primaryButtons.push({ bg: typeof f === "string" ? f : f.color, color: textFill(label) }); }
     if (n.children.some(c => c.type === "icon")) warnings.push(`Bouton « ${label.content} » : l'icône n'est pas reprise, à régler dans Breakdance`);
@@ -535,7 +613,14 @@ for (const page of dump.pages) {
   const pageDir = path.join(OUT, ps);
   fs.mkdirSync(pageDir, { recursive: true });
   const all = [];
+  const zoneOf = (node, i) => /header|en-?t[êe]te|navbar|navigation principale/i.test(node.name || "") ? "header"
+    : /footer|pied/i.test(node.name || "") ? "footer" : null;
+  LINK_TARGETS = [
+    ...page.sections.filter((s, i) => !zoneOf(s, i)).map(s => ({ name: s.name, slug: slugify(s.name), url: "#" + slugify(s.name) })),
+    ...dump.pages.filter(p => p !== page).map(p => ({ name: p.name, slug: slugify(p.name), url: `/${slugify(p.name)}/` })),
+  ];
   for (const [i, node] of page.sections.entries()) {
+    ZONE = zoneOf(node, i);
     const section = await convert(node, null, 1, true);
     if (!section) continue;
     section._parentId = 1;
@@ -573,6 +658,7 @@ if (firstRun) console.log(`\n  ℹ Config créée : ${rel(CONFIG_FILE)}`);
 if (media.size && !MEDIA_URL) console.log(`  ⚠ mediaUrl non renseignée dans pen2bd.config.json : les images ne s'afficheront pas après collage.`);
 if (dupes.length) console.log(`  ⚠ ${dupes.length} nom(s) d'image en double, voir medias.txt`);
 fs.writeFileSync(path.join(OUT, "global-settings.json"), JSON.stringify(globalSettings()));
+for (const [sl, name] of anchorsNeeded) warnings.push(`Section « ${name} » : lui donner l'ID « ${sl} » (onglet Advanced) pour que les liens #${sl} fonctionnent`);
 const uniq = [...new Set(warnings)];
 if (uniq.length) {
   fs.writeFileSync(path.join(OUT, "a-verifier.txt"),

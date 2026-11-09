@@ -58,7 +58,7 @@ Pour importer dans Breakdance :
 2. Ouvre un fichier `.json`, copie tout son contenu (Ctrl+A, Ctrl+C) et colle-le dans l'éditeur Breakdance (Ctrl+V).
    `00-page-complete.json` contient toutes les sections de la page, dans l'ordre.
    Colle-le **sans aucun élément sélectionné** (clique dans le vide de la page avant Ctrl+V). Si une section est sélectionnée, Breakdance risque d'insérer les sections dans un autre ordre.
-3. Consulte `a-verifier.txt` pour les quelques réglages à faire à la main.
+3. Consulte `a-verifier.txt` pour les quelques réglages à faire à la main, notamment **les ID à donner aux sections** pour que les liens du menu (`#prestations`…) fassent défiler la page.
 
 > ⚠ `export/` est entièrement régénéré à chaque lancement. N'y range pas d'autres fichiers.
 
@@ -108,6 +108,8 @@ Le résultat est donc une base fidèle, que le webdesigner finalise dans Breakda
 
 ## Correspondances pen.dev → Breakdance
 
+Le header et le footer sont reconnus au nom de leur section (`Header`, `En-tête`, `Navbar` / `Footer`, `Pied de page`).
+
 | pen.dev | Breakdance |
 |---|---|
 | Cadre racine vertical (page) | une page, chaque enfant direct = une **Section** (padding, largeur, fond) |
@@ -120,6 +122,12 @@ Le résultat est donc une base fidèle, que le webdesigner finalise dans Breakda
 | Rectangle plein de 4 px de haut au maximum | **Divider** (style solid ; couleur et épaisseur à régler, voir `a-verifier.txt`) |
 | Petite ellipse pleine (24 px max) | **Icon** cercle (Font Awesome) à la bonne taille et couleur |
 | Icône Lucide, Feather ou Phosphor | **Icon** (SVG intégré) |
+| Section « Header » : cadre horizontal de textes (+ bouton) | **Menu Builder** natif (Menu Link / Menu Button) |
+| Header / Footer : texte qui porte le nom d'une section | lien vers l'ancre `#nom-de-la-section` (**Wrapper Link** ou Menu Link) |
+| Header / Footer : nom d'une autre page de la maquette | lien `/nom-de-la-page/` (à vérifier) |
+| Téléphone / e-mail (header, footer, boutons) | lien `tel:` / `mailto:` |
+| Calque « Logo » du header / footer | lien vers l'accueil `/` |
+| Calque nommé linkedin, facebook, instagram… | Wrapper Link (URL du profil à renseigner) |
 | Variables couleur pen.dev (`$light`) | couleurs de la **palette** Breakdance (`global-settings.json`), utilisées par les éléments |
 | Variables numériques ou police | valeur reportée directement dans les éléments |
 | Police la plus utilisée dans les titres / dans le texte | police globale des titres / du texte |
