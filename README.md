@@ -127,7 +127,8 @@ Le résultat est donc une base fidèle, que le webdesigner finalise dans Breakda
 | Fond et texte du bouton plein le plus fréquent | style global du bouton primaire |
 | Tout autre élément (ou combinaison non reconnue) | **Div** : à remplacer à la main |
 | Couleurs, bordures, coins arrondis | réglages natifs |
-| Dégradés, ombres, flou, positions absolues | CSS personnalisé de l'élément (`%%SELECTOR%%`) |
+| Dégradé linéaire (seul ou par-dessus une image) | **overlay en dégradé** natif (Background → Overlay) |
+| Dégradés radiaux, ombres, flou, positions absolues | CSS personnalisé de l'élément (`%%SELECTOR%%`) |
 
 ## Trouver pen.dev
 

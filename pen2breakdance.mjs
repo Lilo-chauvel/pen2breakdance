@@ -120,10 +120,40 @@ const layoutOf = n => n.type === "frame" ? (n.layout ?? "horizontal") : null;
 // ---------- fonds ----------
 function fillsOf(n) { return n.fill === undefined ? [] : (Array.isArray(n.fill) ? n.fill : [n.fill]).filter(f => typeof f === "string" || f.enabled !== false); }
 
+// pen : rotation en degrés anti-horaires depuis le haut, la position 0 → 1 suit cette direction
+// CSS / Breakdance : degrés horaires depuis le haut → angle = -rotation
+const cssAngle = f => { const d = (-(resolve(f.rotation) ?? 0)) % 360; return Math.round((d + 360) % 360 * 1000) / 1000; };
+const stopPos = c => (isVar(c.position) ? 0 : c.position);
+
 function gradientCss(f) {
-  const deg = 180 - (f.rotation ?? 0); // pen : 0° = haut, CCW ; CSS : 0° = haut, CW, et la direction pen pointe vers la fin du dégradé
-  const stops = (f.colors || []).map(c => `${color(c.color)} ${Math.round((isVar(c.position) ? 0 : c.position) * 100)}%`).join(", ");
-  return f.gradientType === "radial" ? `radial-gradient(${stops})` : `linear-gradient(${deg}deg, ${stops})`;
+  const stops = (f.colors || []).map(c => `${color(c.color)} ${Math.round(stopPos(c) * 100)}%`).join(", ");
+  return f.gradientType === "radial" ? `radial-gradient(${stops})` : `linear-gradient(${cssAngle(f)}deg, ${stops})`;
+}
+
+// couleur pen (hex ou variable) → {r,g,b,a}
+function rgba(v) {
+  const h = String(resolve(v) || "#000000").replace("#", "");
+  const full = h.length <= 4 ? [...h].map(c => c + c).join("") : h;
+  return { r: parseInt(full.slice(0, 2), 16), g: parseInt(full.slice(2, 4), 16), b: parseInt(full.slice(4, 6), 16), a: full.length >= 8 ? +(parseInt(full.slice(6, 8), 16) / 255).toFixed(3) : 1 };
+}
+const r6 = x => Math.round(x * 1e6) / 1e6;
+
+// Dégradé linéaire → overlay natif Breakdance (format relevé dans un export Breakdance réel)
+function gradientOverlay(f) {
+  const deg = cssAngle(f), rad = deg * Math.PI / 180;
+  const sin = Math.sin(rad) / 2, cos = Math.cos(rad) / 2;
+  const stops = (f.colors || []).map(c => ({ ...rgba(c.color), pos: stopPos(c) }));
+  const svgStops = stops.map(s => `<stop stop-opacity="${s.a}" stop-color="#${[s.r, s.g, s.b].map(x => x.toString(16).padStart(2, "0")).join("")}" offset="${s.pos}"></stop>`).join("");
+  return {
+    type: "gradient",
+    gradient: {
+      points: stops.map(s => ({ left: s.pos * 100, red: s.r, green: s.g, blue: s.b, alpha: s.a })),
+      type: "linear",
+      degree: deg,
+      svgValue: `<linearGradient x1="${r6(0.5 - sin)}" y1="${r6(0.5 + cos)}" x2="${r6(0.5 + sin)}" y2="${r6(0.5 - cos)}" id="%%GRADIENTID%%">${svgStops}</linearGradient>`,
+      value: `linear-gradient(${deg}deg,${stops.map(s => `rgba(${s.r}, ${s.g}, ${s.b}, ${s.a}) ${s.pos * 100}%`).join(",")})`,
+    },
+  };
 }
 
 // Nom que WordPress donnera au fichier une fois converti et importé
@@ -141,17 +171,18 @@ function mediaFromUrl(url) {
   return { id: null, filename, url: full, alt: "", caption: "", mime, type: "image", sizes: {}, attributes: {} };
 }
 
-function applyBackground(props, n, css, isSection = false) {
+function applyBackground(props, n, css) {
+  let overlay = false;
   for (const f of fillsOf(n)) {
     if (typeof f === "string" || f.type === "color") {
       deepSet(props, "design.background.color", color(typeof f === "string" ? f : f.color));
-    } else if (f.type === "image" && f.url && isSection) {
-      const m = mediaFromUrl(f.url);
-      css.push(`background-image: url("${m.url}");`, `background-size: ${f.mode === "contain" ? "contain" : f.mode === "stretch" ? "100% 100%" : "cover"};`, "background-position: center;");
     } else if (f.type === "image" && f.url) {
       deepSet(props, "design.background.type", "image");
       deepSet(props, "design.background.image", bp(mediaFromUrl(f.url)));
-      css.push(`background-size: ${f.mode === "contain" ? "contain" : f.mode === "stretch" ? "100% 100%" : "cover"};`, "background-position: center;");
+      if (f.mode === "contain" || f.mode === "stretch") warnings.push(`« ${n.name} » : image de fond en mode ${f.mode}, à régler dans Breakdance`);
+    } else if (f.type === "gradient" && f.gradientType !== "radial" && f.gradientType !== "angular" && !overlay) {
+      deepSet(props, "design.background.overlay", gradientOverlay(f));
+      overlay = true;
     } else if (f.type === "gradient") {
       css.push(`background-image: ${gradientCss(f)};`);
     }
@@ -433,7 +464,7 @@ async function convert(n, parent, parentId, isRoot = false) {
     if (typeof n.height === "number") css.push(`min-height: ${n.height}px;`);
   }
 
-  applyBackground(props, n, css, isSection);
+  applyBackground(props, n, css);
   if (n.type === "ellipse") css.push("border-radius: 50%;");
   const b = bordersObj(n);
   if (b && !isSection) deepSet(props, "design.container.borders", b);
