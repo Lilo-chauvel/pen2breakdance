@@ -1,0 +1,10 @@
+{
+  "name": "pen2breakdance",
+  "version": "2.0.0",
+  "description": "Exporte une maquette pen.dev en JSON prêt à coller dans Breakdance (format Headspin)",
+  "type": "module",
+  "bin": { "pen2bd": "pen2breakdance.mjs" },
+  "files": ["pen2breakdance.mjs", "pen-mcp.mjs", "README.md"],
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}

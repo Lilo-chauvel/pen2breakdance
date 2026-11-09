@@ -1,0 +1,135 @@
+# pen2breakdance
+
+Exporte une maquette **[pen.dev](https://pen.dev)** en fichiers JSON prêts à **copier-coller dans [Breakdance](https://breakdance.com)** (le builder WordPress), avec le même fonctionnement que [Headspin](https://headspinui.com).
+
+Tu maquettes dans pen.dev, tu lances une commande, et chaque section devient un bloc Breakdance natif : Section, Div, Heading, Text, Button, Image, Icon ou Divider, avec la mise en page, les espacements, les couleurs et la typographie.
+
+- Pas d'IA ni de service en ligne : tout tourne en local.
+- Une seule commande, aucune dépendance npm.
+- Fonctionne avec Node.js 18 ou plus récent.
+
+---
+
+## Prérequis
+
+- **Node.js 18+** : <https://nodejs.org>
+- **pen.dev** installé et **ouvert** pendant l'export.
+  Le fichier `.pen` sur le disque n'est qu'un pointeur : le contenu de la maquette est géré par l'application. Le script la lit via le serveur MCP local fourni avec pen.dev.
+
+## Installation
+
+```bash
+git clone https://github.com/<utilisateur>/pen2breakdance.git
+cd pen2breakdance
+npm install -g .
+```
+
+La commande `pen2bd` est ensuite disponible partout.
+
+## Utilisation
+
+Place-toi dans le dossier qui contient le `.pen`, puis lance :
+
+```bash
+cd mon-projet
+pen2bd
+```
+
+Si le dossier contient plusieurs `.pen`, indique lequel : `pen2bd maquette.pen`.
+
+Le script crée un dossier `export/` :
+
+```
+export/
+├── variables.css          ← variables globales (:root) : couleurs, polices
+├── medias.txt             ← images utilisées et nom attendu dans WordPress
+└── accueil/               ← un dossier par page de la maquette
+    ├── 00-page-complete.json
+    ├── 01-header.json
+    ├── 02-hero.json
+    └── …
+```
+
+Pour importer dans Breakdance :
+
+1. **Une fois par site**, colle le contenu de `variables.css` dans **Breakdance → Global Settings → Code → Custom CSS**.
+2. Ouvre un fichier `.json`, copie tout son contenu (Ctrl+A, Ctrl+C) et colle-le dans l'éditeur Breakdance (Ctrl+V).
+
+> ⚠ `export/` est entièrement régénéré à chaque lancement. N'y range pas d'autres fichiers.
+
+## Images
+
+Les sections collées pointent directement vers tes images dans la médiathèque WordPress :
+
+1. Convertis tes images (en WebP par défaut) **en gardant le même nom de fichier**. `medias.txt` donne le nom exact attendu pour chaque image : les espaces deviennent des tirets et les caractères spéciaux sont retirés, comme le fait WordPress.
+2. Importe-les dans la médiathèque WordPress, toutes au cours du même mois, pour qu'elles soient dans le même dossier `uploads/AAAA/MM/`.
+3. Renseigne `mediaUrl` dans `pen2bd.config.json` avec l'URL de ce dossier, puis relance `pen2bd`.
+
+## Configuration
+
+Au premier lancement, `pen2bd.config.json` est créé à côté du `.pen` :
+
+```json
+{
+  "prefix": "bbe",
+  "mediaUrl": "https://mon-site.fr/wp-content/uploads/2026/11/",
+  "mediaFormat": "webp"
+}
+```
+
+| Clé | Rôle |
+|---|---|
+| `prefix` | Préfixe des variables CSS : la variable pen.dev `light` devient `--bbe-light`. Par défaut, le début du nom du fichier `.pen`. |
+| `mediaUrl` | URL du dossier WordPress qui contient les images. |
+| `mediaFormat` | Extension des images après conversion (`webp`, `avif`…). Mets `""` pour garder l'extension d'origine. |
+
+Options en ligne de commande :
+
+| Option | Effet |
+|---|---|
+| `--media-url <url>` | Définit `mediaUrl` (et l'enregistre dans la config). |
+| `--out <dossier>` | Dossier de sortie (par défaut `./export`). |
+| `--help` | Affiche l'aide. |
+
+## Correspondances pen.dev → Breakdance
+
+| pen.dev | Breakdance |
+|---|---|
+| Cadre racine vertical (page) | une page, chaque enfant direct = une **Section** |
+| Cadre avec mise en page verticale ou horizontale | **Div** avec la mise en page native (alignements, gap, padding) |
+| Rangée de colonnes | Div horizontale qui passe en vertical sur tablette |
+| Texte | **Heading** (h1–h6 si le calque s'appelle `H1`, `H2`…, sinon selon la taille) ou **Text** |
+| Cadre avec fond ou bordure contenant un texte (+ icône) | **Button** (style primaire ou secondaire global) |
+| Cadre ou rectangle sans enfant, rempli d'une image | **Image** |
+| Cadre rempli d'une image avec du contenu par-dessus | Div avec **image de fond** |
+| Rectangle plein de 4 px de haut au maximum | **Divider** (solid) |
+| Icône Lucide, Feather ou Phosphor | **Icon** (SVG intégré) |
+| Variables pen.dev (`$light`) | `var(--prefix-light)` |
+| Couleurs, bordures, coins arrondis | réglages natifs |
+| Dégradés, ombres, flou, positions absolues | CSS personnalisé de l'élément (`%%SELECTOR%%`) |
+
+## Trouver pen.dev
+
+Le script cherche le serveur MCP de pen.dev, dans cet ordre :
+
+1. La variable d'environnement `PEN_MCP_BIN`.
+2. La configuration Claude Code (`~/.claude.json`), si pen.dev y est branché.
+3. Les emplacements d'installation habituels : AppImage montée sous Linux, `/Applications/Pen.app` sous macOS, `%LOCALAPPDATA%\Programs\Pen` sous Windows.
+
+S'il ne trouve rien, indique le chemin à la main :
+
+```bash
+PEN_MCP_BIN="/chemin/vers/resources/app.asar.unpacked/out/mcp-server-xxx" pen2bd
+```
+
+## Limites connues
+
+- **Testé uniquement sous Linux.** Les chemins macOS et Windows restent à confirmer.
+- Les **liens des boutons** sont exportés vers `#`.
+- Les éléments complexes (formulaires, FAQ, sliders, menus) sont exportés en Div à remplacer par l'élément Breakdance adapté.
+- Les images sont collées par URL, sans identifiant de médiathèque : pas de `srcset` automatique.
+- Certaines propriétés Breakdance ont été déduites sans exemple réel (padding des Sections, Divider, passage en vertical sur tablette). Les retours sont bienvenus.
+
+## Licence
+
+MIT

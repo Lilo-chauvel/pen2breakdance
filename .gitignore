@@ -1,0 +1,5 @@
+node_modules/
+export/
+pen2bd.config.json
+*.pen
+.DS_Store
