@@ -118,7 +118,9 @@ Le script signale les types d'éléments inconnus, les propriétés absentes des
 
 ## Correspondances pen.dev → Breakdance
 
-Le header et le footer sont reconnus au nom de leur section (`Header`, `En-tête`, `Navbar` / `Footer`, `Pied de page`).
+Le header et le footer sont reconnus à leur nom (`Header`, `En-tête`, `Navbar` / `Footer`, `Pied de page`), qu'il s'agisse d'une section entière ou d'un cadre placé dans une section (en-tête posé sur le bandeau d'ouverture, par exemple).
+
+Les **composants pen.dev** (instances d'un composant réutilisable) sont remplacés par une copie du composant avant la conversion, avec les surcharges de l'instance (couleurs, textes…). Un header ou un footer en composant est donc exporté comme les autres.
 
 | pen.dev | Breakdance |
 |---|---|
@@ -134,7 +136,7 @@ Le header et le footer sont reconnus au nom de leur section (`Header`, `En-tête
 | Icône Lucide, Feather ou Phosphor | **Icon** (SVG intégré) |
 | Section « Header » : cadre horizontal de textes (+ bouton) | **Menu Builder** natif (Menu Link / Menu Button) |
 | Header / Footer : texte qui porte le nom d'une section | lien vers l'ancre `#nom-de-la-section` (**Wrapper Link** ou Menu Link) |
-| Header / Footer : nom d'une autre page de la maquette | lien `/nom-de-la-page/` (à vérifier) |
+| Header / Footer : nom d'une autre page de la maquette | lien `/nom-de-la-page/` (à vérifier) ; la variante d'écran est retirée (« Contact — Ordinateur 1440 » → `/contact/`), « Accueil » → `/` |
 | Téléphone / e-mail (header, footer, boutons) | lien `tel:` / `mailto:` |
 | Calque « Logo » du header / footer | lien vers l'accueil `/` |
 | Calque nommé linkedin, facebook, instagram… | Wrapper Link (URL du profil à renseigner) |

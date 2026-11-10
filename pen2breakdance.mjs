@@ -59,10 +59,45 @@ let dump;
 try { dump = await readDocument(penFile); }
 catch (e) { fail(e.message); }
 const VARS = dump.variables || {};
+
+// ---------- composants pen.dev ----------
+// Une instance (type "ref") pointe vers un cadre "reusable" ; elle peut surcharger ses propres propriétés
+// et celles de ses descendants (descendants : { id: {props} } ou nœud complet s'il a un "type").
+// On remplace chaque instance par une copie résolue du composant, avant toute conversion.
+const COMPONENTS = new Map();
+(function collect(n) {
+  if (!n || typeof n !== "object") return;
+  if (n.reusable && n.id) COMPONENTS.set(n.id, n);
+  (n.children || []).forEach(collect);
+})({ children: dump.pages.flatMap(p => p.sections) });
+
+function resolveRefs(n, overrides = {}, depth = 0) {
+  if (!n || typeof n !== "object") return n;
+  const own = overrides[n.id];
+  if (own?.type) n = own;                              // remplacement complet du nœud
+  else if (own) n = { ...n, ...own };
+  if (n.type === "ref" && depth < 20) {
+    const comp = COMPONENTS.get(n.ref);
+    if (!comp) return n;
+    const { type, ref, descendants, ...instance } = n;
+    // surcharges : celles de l'instance l'emportent ; un id "a/b" vise b à l'intérieur du composant imbriqué a
+    const sub = { ...overrides, ...Object.fromEntries(Object.entries(descendants || {}).map(([k, v]) => [k.split("/").pop(), v])) };
+    const { reusable, ...base } = comp;
+    return resolveRefs({ ...structuredClone(base), ...instance }, sub, depth + 1);
+  }
+  const out = { ...n };
+  delete out.reusable;
+  if (n.children) out.children = n.children.map(c => resolveRefs(c, overrides, depth));
+  return out;
+}
+for (const page of dump.pages) page.sections = page.sections.map(s => resolveRefs(s));
 let PAGE_WIDTH = 1440;
 let FONTS = { heading: null, body: null };
 // Liens du header / footer
+const pageTitle = name => String(name || "").replace(/\s*[—–-]\s*(ordinateur|desktop|tablette|tablet|mobile|phone)\b.*$/i, "").trim();
 let ZONE = null;              // "header" | "footer" | null pendant la conversion d'une section
+const zoneName = name => /header|en-?t[êe]te|navbar|navigation principale/i.test(name || "") ? "header"
+  : /footer|pied/i.test(name || "") ? "footer" : null;
 let LINK_TARGETS = [];        // [{ name, slug, url }] : sections de la page (ancres) et autres pages
 const anchorsNeeded = new Map(); // slug → nom de la section à qui donner cet ID
 
@@ -372,6 +407,7 @@ function linkFor(t) {
   if (/^\+?\d{9,15}$/.test(digits)) return `tel:${digits}`;
   const sl = slugify(txt.replace(/\*/g, ""));
   if (!sl) return null;
+  if (/^(accueil|home)$/.test(sl)) return "/";
   const target = LINK_TARGETS.find(x => x.slug === sl) || LINK_TARGETS.find(x => x.slug.startsWith(sl + "-"));
   if (!target) return null;
   if (target.url.startsWith("#")) anchorsNeeded.set(target.slug, target.name);
@@ -393,6 +429,12 @@ const isMenu = n => ZONE === "header" && n.type === "frame" && (n.layout ?? "hor
 
 async function convert(n, parent, parentId, isRoot = false) {
   if (n.enabled === false) return null;
+
+  // Header / footer placé à l'intérieur d'une section (ex. en-tête posé sur le bandeau d'ouverture)
+  if (!ZONE && !isRoot && n.type === "frame" && zoneName(n.name)) {
+    ZONE = zoneName(n.name);
+    try { return await convert(n, parent, parentId); } finally { ZONE = null; }
+  }
 
   if (ZONE && !isRoot) {
     // Menu du header → MenuBuilder natif (MenuLink / MenuButton)
@@ -677,11 +719,12 @@ for (const page of dump.pages) {
   const pageDir = path.join(OUT, ps);
   fs.mkdirSync(pageDir, { recursive: true });
   const all = [];
-  const zoneOf = (node, i) => /header|en-?t[êe]te|navbar|navigation principale/i.test(node.name || "") ? "header"
-    : /footer|pied/i.test(node.name || "") ? "footer" : null;
+  const zoneOf = node => zoneName(node.name);
   LINK_TARGETS = [
     ...page.sections.filter((s, i) => !zoneOf(s, i)).map(s => ({ name: s.name, slug: slugify(s.name), url: "#" + slugify(s.name) })),
-    ...dump.pages.filter(p => p !== page).map(p => ({ name: p.name, slug: slugify(p.name), url: `/${slugify(p.name)}/` })),
+    // « Plâtrerie & isolation — Ordinateur 1440 » → /platrerie-isolation/ (la variante d'écran n'est pas une page WordPress)
+    ...dump.pages.map(p => slugify(pageTitle(p.name))).filter((sl, i, all) => sl !== slugify(pageTitle(page.name)) && all.indexOf(sl) === i)
+      .map(sl => ({ name: sl, slug: sl, url: `/${sl}/` })),
   ];
   for (const [i, node] of page.sections.entries()) {
     ZONE = zoneOf(node, i);
