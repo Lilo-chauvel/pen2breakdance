@@ -101,10 +101,20 @@ Options en ligne de commande :
 Le script n'écrit que des réglages Breakdance **vérifiés**, c'est-à-dire relevés dans de vrais exports Breakdance. Quand il ne sait pas convertir quelque chose proprement, il ne devine pas :
 
 - **Un élément qu'il ne sait pas convertir devient une Div.** Si tu trouves une Div là où tu attendais un autre élément (formulaire, accordéon, slider, menu…), c'est que la conversion n'a pas été possible. Remplace-la par l'élément Breakdance adapté.
-- **Un réglage visuel sans équivalent Breakdance connu** (dégradé, ombre, position absolue, bordure d'une image…) passe dans le **CSS personnalisé** de l'élément (onglet Advanced → Custom CSS, sélecteur `%%SELECTOR%%`).
+- **Un réglage visuel sans équivalent Breakdance connu** (ombre, position absolue, bordure d'une image…) passe dans le **CSS personnalisé** de l'élément (onglet Advanced → Custom CSS, sélecteur `%%SELECTOR%%`).
 - **Un réglage impossible à transmettre** (couleur d'un Divider, icône dans un bouton…) est listé dans **`a-verifier.txt`**, à régler à la main.
 
 Le résultat est donc une base fidèle, que le webdesigner finalise dans Breakdance.
+
+### Vérifier un export
+
+`elements.json` contient les définitions des 192 éléments Breakdance (contrôles, valeurs autorisées, valeurs par défaut), extraites de l'éditeur. Pour contrôler qu'un export n'utilise que des réglages existants :
+
+```bash
+node check-elements.mjs export/
+```
+
+Le script signale les types d'éléments inconnus, les propriétés absentes des contrôles, les valeurs hors liste (dropdown, button_bar) et les clés de breakpoint invalides.
 
 ## Correspondances pen.dev → Breakdance
 
@@ -135,8 +145,9 @@ Le header et le footer sont reconnus au nom de leur section (`Header`, `En-tête
 | Fond et texte du bouton plein le plus fréquent | style global du bouton primaire |
 | Tout autre élément (ou combinaison non reconnue) | **Div** : à remplacer à la main |
 | Couleurs, bordures, coins arrondis | réglages natifs |
-| Dégradé linéaire (seul ou par-dessus une image) | **overlay en dégradé** natif (Background → Overlay) |
-| Dégradés radiaux, ombres, flou, positions absolues | CSS personnalisé de l'élément (`%%SELECTOR%%`) |
+| Dégradé linéaire | **overlay en dégradé** natif (Background → Overlay) ; un 2ᵉ dégradé en dessous va dans le **fond en dégradé** (Background → Type Gradient), sauf s'il y a une image de fond |
+| Dégradés radiaux / coniques, 3ᵉ dégradé | jamais en CSS : listés dans `a-verifier.txt`, à régler à la main |
+| Ombres, flou, positions absolues | CSS personnalisé de l'élément (`%%SELECTOR%%`) |
 
 ## Trouver pen.dev
 

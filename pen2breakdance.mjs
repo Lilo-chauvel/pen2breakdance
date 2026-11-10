@@ -175,22 +175,33 @@ function mediaFromUrl(url) {
   return { id: null, filename, url: full, alt: "", caption: "", mime, type: "image", sizes: {}, attributes: {} };
 }
 
-function applyBackground(props, n, css) {
-  let overlay = false;
+// Dégradés uniquement en réglages natifs, jamais en CSS. Breakdance offre deux emplacements :
+// l'overlay (au-dessus) et le fond lui-même (design.background.type = gradient, impossible avec une image de fond).
+// Les fills pen s'empilent du bas vers le haut : le dernier dégradé va dans l'overlay, le précédent dans le fond.
+function applyBackground(props, n) {
+  const gradients = [];
+  let hasImage = false;
   for (const f of fillsOf(n)) {
     if (typeof f === "string" || f.type === "color") {
       deepSet(props, "design.background.color", color(typeof f === "string" ? f : f.color));
     } else if (f.type === "image" && f.url) {
+      hasImage = true;
       deepSet(props, "design.background.type", "image");
       deepSet(props, "design.background.image", bp(mediaFromUrl(f.url)));
       if (f.mode === "contain" || f.mode === "stretch") warnings.push(`« ${n.name} » : image de fond en mode ${f.mode}, à régler dans Breakdance`);
-    } else if (f.type === "gradient" && f.gradientType !== "radial" && f.gradientType !== "angular" && !overlay) {
-      deepSet(props, "design.background.overlay", gradientOverlay(f));
-      overlay = true;
     } else if (f.type === "gradient") {
-      css.push(`background-image: ${gradientCss(f)};`);
+      if (f.gradientType === "radial" || f.gradientType === "angular") warnings.push(`« ${n.name} » : dégradé ${f.gradientType} (${gradientCss(f)}), à régler dans Breakdance (Background)`);
+      else gradients.push(f);
     }
   }
+  const top = gradients.pop();
+  if (top) deepSet(props, "design.background.overlay", gradientOverlay(top));
+  const under = hasImage ? null : gradients.pop();
+  if (under) {
+    deepSet(props, "design.background.type", "gradient");
+    deepSet(props, "design.background.gradient", gradientOverlay(under).gradient);
+  }
+  for (const f of gradients) warnings.push(`« ${n.name} » : dégradé supplémentaire (${gradientCss(f)}), à régler dans Breakdance`);
 }
 
 // ---------- bordures / rayons / effets ----------
@@ -538,11 +549,13 @@ async function convert(n, parent, parentId, isRoot = false) {
   }
   if (isSection) {
     // Section : contenu pleine largeur du conteneur, padding vertical géré au-dessus
-    deepSet(props, "design.container.width", bp(px(Math.max(320, PAGE_WIDTH - (pad ? (pad.left || 0) + (pad.right || 0) : 0)))));
+    // Section : largeur via design.size (width = custom → container_width), cf. elements.json
+    deepSet(props, "design.size.width", bp("custom"));
+    deepSet(props, "design.size.container_width", bp(px(Math.max(320, PAGE_WIDTH - (pad ? (pad.left || 0) + (pad.right || 0) : 0)))));
     if (typeof n.height === "number") css.push(`min-height: ${n.height}px;`);
   }
 
-  applyBackground(props, n, css);
+  applyBackground(props, n);
   if (n.type === "ellipse") css.push("border-radius: 50%;");
   const b = bordersObj(n);
   if (b && !isSection) deepSet(props, "design.container.borders", b);
