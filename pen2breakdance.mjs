@@ -240,6 +240,37 @@ function effectsCss(n, css) {
   if (n.opacity !== undefined && n.opacity !== 1) css.push(`opacity: ${n.opacity};`);
 }
 
+// ---------- grilles ----------
+// pen.dev n'a pas de grille : on la reconnaît à sa structure.
+//  A. frame vertical composé uniquement de rangées horizontales identiques (même nombre de cellules,
+//     toutes en fill_container ; la dernière rangée peut être incomplète), rangées sans fond ni padding
+//  B. rangée horizontale d'au moins 3 cartes identiques (frames ou composants) en fill_container
+// → Div en layout Grid natif (Items Per Row), les cellules deviennent enfants directs.
+const GRID_PARENT = { type: "frame", layout: "vertical" };
+const visible = n => (n.children || []).filter(c => c.enabled !== false);
+const isFill = w => w === "fill_container" || (typeof w === "string" && w.startsWith("fill_container"));
+const isCard = c => (c.type === "frame" || c.type === "ref") && !isButton(c) && isFill(c.width);
+// cellule en fill_container de hauteur dans une rangée de hauteur fixe → hauteur de la rangée
+const cellOf = (c, row) => (isFill(c.height) && typeof row.height === "number") ? { ...c, height: row.height } : c;
+
+function gridOf(n, parent) {
+  if (n.type !== "frame") return null;
+  const kids = visible(n);
+  const layout = layoutOf(n);
+  if (layout === "vertical" && kids.length >= 2 && kids.every(r => layoutOf(r) === "horizontal" && fillsOf(r).length === 0 && !r.padding && r.stroke === undefined)) {
+    const rows = kids.map(visible);
+    const N = rows[0].length;
+    const sameCount = rows.every((r, i) => i === rows.length - 1 ? r.length >= 1 && r.length <= N : r.length === N);
+    if (N >= 2 && sameCount && rows.every(r => r.every(c => isFill(c.width) && c.type !== "text")))
+      return { cols: N, cells: rows.flatMap((r, i) => r.map(c => cellOf(c, kids[i]))), gap: kids[0].gap, rowGap: n.gap };
+  }
+  // rangée d'une grille irrégulière (ex. une carte plus large par rangée) : on laisse en flex
+  const rowOfStack = parent && layoutOf(parent) === "vertical" && visible(parent).filter(r => r !== n && layoutOf(r) === "horizontal" && visible(r).length === kids.length).length > 0;
+  if (layout === "horizontal" && kids.length >= 3 && !rowOfStack && kids.every(isCard))
+    return { cols: kids.length, cells: kids.map(c => cellOf(c, n)), gap: n.gap, rowGap: n.gap };
+  return null;
+}
+
 // ---------- dimensions ----------
 function sizing(n, parent, css, kind /* div | text | image */) {
   const pl = parent ? layoutOf(parent) : null;
@@ -514,9 +545,23 @@ async function convert(n, parent, parentId, isRoot = false) {
   const layout = n.type === "frame" ? layoutOf(n) : n.type === "group" ? "none" : null;
   const isSection = isRoot;
   const e = el(isSection ? "Section" : "Div", props, parentId, n.name);
+  const grid = isSection ? null : gridOf(n, parent);
 
   // Layout
-  if (layout === "horizontal") {
+  if (grid) {
+    const N = grid.cols;
+    const perRow = { breakpoint_base: N };
+    if (PAGE_WIDTH >= 1024) {           // maquette ordinateur : grille qui se replie sur tablette / mobile
+      if (N > 2) perRow.breakpoint_tablet_portrait = 2;
+      perRow.breakpoint_phone_landscape = 1;
+    }
+    deepSet(props, "design.layout_v2", {
+      layout: "grid",
+      g_items_per_row: perRow,
+      ...(grid.gap ? { g_space_between_items: bp(num(grid.gap)) } : {}),
+    });
+    if ((grid.rowGap ?? 0) !== (grid.gap ?? 0)) warnings.push(`« ${n.name} » : grille avec espacement vertical (${grid.rowGap ?? 0}) ≠ horizontal (${grid.gap ?? 0}), Breakdance n'en garde qu'un (${grid.gap ?? 0})`);
+  } else if (layout === "horizontal") {
     const hasFrameChildren = (n.children || []).filter(c => c.type === "frame" && !isButton(c)).length >= 2;
     deepSet(props, "design.layout_v2", {
       layout: "horizontal",
@@ -570,7 +615,13 @@ async function convert(n, parent, parentId, isRoot = false) {
   if (kids.some(c => c.layoutPosition === "absolute") || layout === "none") {
     if (!css.includes("position: relative;")) css.push("position: relative;");
   }
-  for (const c of kids) {
+  if (grid) {
+    // Les rangées pen disparaissent : leurs cellules deviennent les enfants directs de la grille
+    for (const c of grid.cells) {
+      const ce = await convert(c, GRID_PARENT, e.id);
+      if (ce) e.children.push(ce);
+    }
+  } else for (const c of kids) {
     if (layout === "none") c._absParent = true;
     const ce = await convert(c, n, e.id);
     if (ce) e.children.push(ce);

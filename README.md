@@ -145,6 +145,7 @@ Le header et le footer sont reconnus au nom de leur section (`Header`, `En-tête
 | Fond et texte du bouton plein le plus fréquent | style global du bouton primaire |
 | Tout autre élément (ou combinaison non reconnue) | **Div** : à remplacer à la main |
 | Couleurs, bordures, coins arrondis | réglages natifs |
+| Grille : frame vertical de rangées identiques (cellules en `fill_container`), ou rangée d'au moins 3 cartes identiques en `fill_container` | Div en **layout Grid** natif (Items Per Row : N colonnes, 2 sur tablette, 1 sur mobile) ; les rangées disparaissent |
 | Dégradé linéaire | **overlay en dégradé** natif (Background → Overlay) ; un 2ᵉ dégradé en dessous va dans le **fond en dégradé** (Background → Type Gradient), sauf s'il y a une image de fond |
 | Dégradés radiaux / coniques, 3ᵉ dégradé | jamais en CSS : listés dans `a-verifier.txt`, à régler à la main |
 | Ombres, flou, positions absolues | CSS personnalisé de l'élément (`%%SELECTOR%%`) |
